@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Alerta de Goles</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: transparent; /* Fundamental para OBS */
+        }
+        #video-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: none;
+            text-align: center;
+        }
+        video {
+            width: 100%;
+            max-width: 800px; /* Ajusta el tamaño según tu stream */
+            border-radius: 15px;
+            box-shadow: 0px 0px 20px rgba(0,0,0,0.5);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="video-container">
+        <video id="alerta-video" src=""></video>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const container = document.getElementById('video-container');
+        const videoPlayer = document.getElementById('alerta-video');
+        
+        let colaDeVideos = []; // Aquí se guardan los videos pendientes
+        let reproduciendo = false;
+
+        // Escuchamos el evento desde el backend
+        socket.on('mostrar-gol', (data) => {
+            // Si el usuario mandó un combo (ej: x5 rosas), metemos el video 5 veces a la cola
+            const cantidad = data.cantidad || 1;
+            for(let i = 0; i < cantidad; i++) {
+                colaDeVideos.push(data.video);
+            }
+            procesarCola();
+        });
+
+        function procesarCola() {
+            // Si ya hay un video reproduciéndose o la cola está vacía, no hacemos nada
+            if (reproduciendo || colaDeVideos.length === 0) return;
+
+            reproduciendo = true;
+            
+            // Sacamos el primer video de la cola
+            const videoActual = colaDeVideos.shift();
+            
+            videoPlayer.src = videoActual;
+            container.style.display = 'block';
+            
+            // Forzamos la reproducción
+            videoPlayer.play().catch(e => console.error("Error al reproducir:", e));
+        }
+
+        // Cuando el video termina, verificamos si hay más en la cola
+        videoPlayer.onended = () => {
+            container.style.display = 'none';
+            reproduciendo = false;
+            videoPlayer.src = ""; // Limpiamos
+            
+            // Esperamos medio segundo antes de mostrar el siguiente gol para que se vea natural
+            setTimeout(() => {
+                procesarCola();
+            }, 500);
+        };
+    </script>
+</body>
+</html>
