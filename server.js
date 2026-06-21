@@ -43,7 +43,9 @@ let tiktokConnection = new WebcastPushConnection(tiktokUsername, {
     processInitialData: false,     
     enableExtendedGiftInfo: true,  
     enableWebsocketUpgrade: true,  
-    requestPollingIntervalMs: 2000 
+    requestPollingIntervalMs: 2000,
+    // 👇 ESTO ES LO QUE OBLIGARÁ A RENDER A ENTRAR 👇
+    sessionId: "85003d94cb2396d115e5971616273e8f" 
 });
 
 function conectarTikTok() {
