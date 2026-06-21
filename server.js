@@ -1,15 +1,13 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-
-// Importación segura y directa
-const tiktokLive = require('tiktok-live-connector');
-const WebcastPushConnection = tiktokLive.WebcastPushConnection || tiktokLive.default?.WebcastPushConnection || tiktokLive;
+const { WebcastPushConnection } = require('tiktok-live-connector');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
+// Servir la carpeta public para los HTML y los videos
 app.use(express.static('public'));
 
 // ============================================================================
@@ -39,7 +37,7 @@ const mapaGoles = {
 const tiktokUsername = "futbolmundial2026_";
 
 // ============================================================================
-// 👤 CONEXIÓN A TIKTOK
+// 👤 CONEXIÓN A TIKTOK LIVE
 // ============================================================================
 let tiktokConnection = new WebcastPushConnection(tiktokUsername, {
     processInitialData: false,     
@@ -54,22 +52,30 @@ function conectarTikTok() {
     tiktokConnection.connect().then(state => {
         console.log(`✅ ¡Conectado exitosamente al Live! Room ID: ${state.roomId}`);
     }).catch(err => {
-        console.error('❌ Error al conectar (Asegúrate de estar en vivo). Reintentando en 10s...');
+        console.error('❌ Error al conectar. (El directo debe estar activo). Reintentando en 10s...');
         setTimeout(conectarTikTok, 10000);
     });
 }
 
+// Arrancar la conexión
 conectarTikTok();
 
+// Si se cae el live, intenta reconectar automáticamente
 tiktokConnection.on('disconnected', () => {
     console.log('⚠️ Conexión interrumpida o Live finalizado. Reconectando...');
     conectarTikTok();
 });
 
+// Manejo de errores de la librería
+tiktokConnection.on('error', (err) => {
+    console.error('🚨 Error interno de TikTok:', err.message);
+});
+
 // ============================================================================
-// 🎁 ESCUCHADOR DE REGALOS
+// 🎁 ESCUCHADOR DE REGALOS (LIVE REAL)
 // ============================================================================
 tiktokConnection.on('gift', (data) => {
+    // Filtrar combos de regalos para que no se spamee la alerta
     if (data.giftType === 1 && !data.repeatEnd) return; 
 
     const nombreRegalo = data.giftName;
@@ -89,7 +95,7 @@ tiktokConnection.on('gift', (data) => {
 });
 
 // ============================================================================
-// 🧪 CANAL DE PRUEBAS LOCALES (test.html)
+// 🧪 CANAL DE COMUNICACIÓN PARA PRUEBAS (test.html)
 // ============================================================================
 io.on('connection', (socket) => {
     socket.on('simular-regalo', (data) => {

@@ -1,7 +1,17 @@
 {
+  "name": "tiktok-goles",
+  "version": "1.0.0",
+  "description": "Servidor de alertas de TikTok para OBS",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": "20.x"
+  },
   "dependencies": {
-    "express": "^5.2.1",
-    "socket.io": "^4.8.3",
-    "tiktok-live-connector": "^2.4.0"
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5",
+    "tiktok-live-connector": "^1.1.2"
   }
 }
