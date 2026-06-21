@@ -1,33 +1,9 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const tiktokLive = require('tiktok-live-connector');
 
-// ============================================================================
-// 🛡️ EXTRACCIÓN DEFINITIVA PARA RENDER Y NODE 24+
-// Esto busca la clase en toda la librería sin importar cómo Render la empaquete
-// ============================================================================
-let WebcastPushConnection;
-
-if (tiktokLive && typeof tiktokLive.WebcastPushConnection === 'function') {
-    WebcastPushConnection = tiktokLive.WebcastPushConnection;
-} else if (tiktokLive && tiktokLive.default && typeof tiktokLive.default.WebcastPushConnection === 'function') {
-    WebcastPushConnection = tiktokLive.default.WebcastPushConnection;
-} else {
-    // Búsqueda profunda de la clase
-    for (const key in tiktokLive) {
-        if (key === 'WebcastPushConnection' || (typeof tiktokLive[key] === 'function' && tiktokLive[key].name === 'WebcastPushConnection')) {
-            WebcastPushConnection = tiktokLive[key];
-            break;
-        }
-    }
-}
-
-if (!WebcastPushConnection) {
-    console.error("🛑 Error Crítico: Imposible encontrar WebcastPushConnection.");
-    console.error("Revisa si la versión de tiktok-live-connector es compatible.");
-    process.exit(1); // Detiene el servidor si la librería falla al cargar
-}
+// En Node 20 esto funciona perfecto a la primera
+const { WebcastPushConnection } = require('tiktok-live-connector');
 
 // ============================================================================
 // ⚙️ CONFIGURACIÓN DEL SERVIDOR EXPRESS Y WEBSOCKETS
@@ -35,7 +11,7 @@ if (!WebcastPushConnection) {
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-    cors: { origin: "*" } // Evita bloqueos si pruebas desde redes distintas
+    cors: { origin: "*" }
 });
 
 // Servimos los archivos estáticos (index.html, test.html y la carpeta de videos)
@@ -70,12 +46,11 @@ const mapaGoles = {
 // ============================================================================
 const tiktokUsername = "futbolmundial2026_";
 
-// Opciones avanzadas para una conexión más robusta
 let tiktokConnection = new WebcastPushConnection(tiktokUsername, {
-    processInitialData: false,     // Ignora eventos que pasaron antes de encender el script
-    enableExtendedGiftInfo: true,  // Trae mejor información de los regalos
-    enableWebsocketUpgrade: true,  // Usa una conexión más estable
-    requestPollingIntervalMs: 2000 // Frecuencia de chequeo interno
+    processInitialData: false,     
+    enableExtendedGiftInfo: true,  
+    enableWebsocketUpgrade: true,  
+    requestPollingIntervalMs: 2000 
 });
 
 // 🔄 SISTEMA DE CONEXIÓN Y RECONEXIÓN AUTOMÁTICA
@@ -86,22 +61,17 @@ function conectarTikTok() {
         console.log(`✅ ¡Conectado exitosamente al Live! Room ID: ${state.roomId}`);
     }).catch(err => {
         console.error('❌ Error al conectar. (Asegúrate de estar transmitiendo en vivo).');
-        console.error(`Reintentando automáticamente en 10 segundos...`);
-        // Si no está en vivo, reintenta cada 10 segundos silenciosamente
         setTimeout(conectarTikTok, 10000);
     });
 }
 
-// Iniciar la primera conexión
 conectarTikTok();
 
-// Evento: Se cayó el Live o la conexión a internet
 tiktokConnection.on('disconnected', () => {
-    console.log('⚠️ Conexión con TikTok interrumpida o Live finalizado. Reconectando...');
+    console.log('⚠️ Conexión interrumpida o Live finalizado. Reconectando...');
     conectarTikTok();
 });
 
-// Manejo de errores internos de la librería para evitar que el servidor crashee
 tiktokConnection.on('error', (err) => {
     console.error('🚨 Error detectado en la librería de TikTok:', err.message);
 });
@@ -110,11 +80,7 @@ tiktokConnection.on('error', (err) => {
 // 🎁 ESCUCHADOR DE EVENTOS (REGALOS REALES)
 // ============================================================================
 tiktokConnection.on('gift', (data) => {
-    // Evita el "spam" de la cola si un usuario manda un combo de 100 rosas seguidas.
-    // Solo dispara la alerta final del combo.
-    if (data.giftType === 1 && !data.repeatEnd) {
-        return;
-    }
+    if (data.giftType === 1 && !data.repeatEnd) return; 
 
     const nombreRegalo = data.giftName;
     const archivoVideo = mapaGoles[nombreRegalo];
@@ -123,7 +89,6 @@ tiktokConnection.on('gift', (data) => {
 
     if (archivoVideo) {
         console.log(`[ALERTA OBS] ⚽ Disparando video: ${archivoVideo}`);
-        // Mandamos la orden al frontend (OBS)
         io.emit('mostrar-gol', {
             video: `/videos/${archivoVideo}`,
             usuario: data.uniqueId,
@@ -137,7 +102,7 @@ tiktokConnection.on('gift', (data) => {
 // 🧪 CANAL DE COMUNICACIÓN PARA PRUEBAS LOCALES (test.html)
 // ============================================================================
 io.on('connection', (socket) => {
-    console.log('🔌 Nuevo cliente visual conectado (OBS o Panel de Pruebas)');
+    console.log('🔌 Nuevo cliente visual conectado');
 
     socket.on('simular-regalo', (data) => {
         console.log(`[MODO PRUEBA] 🧪 Usuario simulado "${data.usuario}" envió: ${data.regalo}`);
@@ -150,19 +115,12 @@ io.on('connection', (socket) => {
                 regalo: data.regalo,
                 cantidad: 1
             });
-        } else {
-            console.log(`[MODO PRUEBA] ⚠️ Regalo '${data.regalo}' no está en el mapa.`);
         }
-    });
-
-    socket.on('disconnect', () => {
-        console.log('🔌 Cliente visual desconectado');
     });
 });
 
 // ============================================================================
 // 🚀 INICIO DEL SERVIDOR
-// Render asigna dinámicamente un puerto en process.env.PORT, o usamos 3000 localmente.
 // ============================================================================
 const PORT = process.env.PORT || 3000;
 
