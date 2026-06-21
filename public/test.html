@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Panel de Simulación de Goles</title>
+    <title>Control de Goles</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -20,6 +20,46 @@
             box-shadow: 0 8px 24px rgba(0,0,0,0.4);
         }
         h1 { color: #00ffcc; margin-top: 0; text-align: center; }
+        
+        /* Caja de Conexión Live */
+        .live-box {
+            background: #2b1b3d;
+            border: 2px solid #ff0050;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .live-box input {
+            padding: 10px;
+            font-size: 16px;
+            border-radius: 5px;
+            border: 1px solid #ff0050;
+            background: #141419;
+            color: #fff;
+            width: 250px;
+            font-weight: bold;
+        }
+        .btn-live {
+            padding: 10px 20px;
+            background: #ff0050;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .btn-live:hover { background: #cc0040; }
+        #status-text {
+            font-size: 18px;
+            font-weight: bold;
+            color: #888;
+        }
+
+        /* Caja de Pruebas Manuales */
         .config-box {
             background: #282830;
             padding: 15px;
@@ -29,16 +69,16 @@
             align-items: center;
             gap: 15px;
         }
-        input[type="text"] {
+        .config-box input {
             padding: 10px;
             font-size: 15px;
             border-radius: 5px;
             border: 1px solid #444;
             background: #141419;
             color: #fff;
-            width: 250px;
+            width: 200px;
         }
-        button.action-btn {
+        .action-btn {
             padding: 10px 15px;
             background: #4a4e69;
             color: white;
@@ -47,7 +87,8 @@
             cursor: pointer;
             font-weight: bold;
         }
-        button.action-btn:hover { background: #5a5f80; }
+        .action-btn:hover { background: #5a5f80; }
+        
         .grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
@@ -67,7 +108,6 @@
             border-color: #00ffcc;
             background: #343854;
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,255,204,0.2);
         }
         .player {
             display: block;
@@ -80,16 +120,26 @@
 <body>
 
     <div class="container">
-        <h1>🧪 Entorno de Pruebas Manuales</h1>
-        <p style="color: #bbb; text-align: center;">Usa este panel para asegurarte de que los videos cargan correctamente en el overlay sin tener que iniciar directo.</p>
+        <h1>🎛️ Centro de Control - TikTok Goles</h1>
         
-        <div class="config-box">
-            <label for="input-user"><strong>Nombre de Usuario a simular:</strong></label>
-            <input type="text" id="input-user" value="Fanatico_Py99">
-            <button class="action-btn" onclick="cambiarNombreAleatorio()">🎲 Nombre Azar</button>
+        <!-- PANEL DE CONEXIÓN A TIKTOK -->
+        <div class="live-box">
+            <label><strong>📡 Conectar al Directo:</strong></label>
+            <input type="text" id="input-tiktok" value="futbolmundial2026_">
+            <button class="btn-live" onclick="conectarTikTok()">▶️ Conectar</button>
+            <span id="status-text">⚪ Esperando orden...</span>
         </div>
 
-        <h3>Elige un regalo para lanzar su gol correspondiente:</h3>
+        <hr style="border: 1px solid #333; margin-bottom: 20px;">
+
+        <!-- PANEL DE PRUEBAS -->
+        <h3>🧪 Pruebas Manuales (Sin estar en Live)</h3>
+        <div class="config-box">
+            <label>Simular espectador:</label>
+            <input type="text" id="input-user" value="Fanatico_Py99">
+            <button class="action-btn" onclick="cambiarNombre()">🎲 Nombre Azar</button>
+        </div>
+
         <div class="grid" id="grid-botones"></div>
     </div>
 
@@ -97,26 +147,45 @@
     <script>
         const socket = io();
 
-        // Estructura exacta de tus 18 configuraciones activas
+        // 1. Lógica de Conexión a TikTok
+        function conectarTikTok() {
+            const username = document.getElementById('input-tiktok').value.trim();
+            if (!username) return alert("Escribe un nombre de usuario");
+            
+            document.getElementById('status-text').style.color = '#ffcc00';
+            document.getElementById('status-text').innerText = '⏳ Conectando...';
+            
+            socket.emit('iniciar-conexion-tiktok', username);
+        }
+
+        // Recibir respuesta del servidor sobre la conexión
+        socket.on('estado-conexion', (data) => {
+            const statusEl = document.getElementById('status-text');
+            statusEl.innerText = data.status;
+            statusEl.style.color = data.color;
+        });
+
+
+        // 2. Lógica de los botones de prueba
         const regalosActivos = [
-            { gift: 'Rose', player: 'Matías Galarza (Paraguay)' },
-            { gift: 'Doughnut', player: 'Maurício (Paraguay)' },
-            { gift: 'TikTok', player: 'Lionel Messi (Argentina)' },
-            { gift: 'Ice Cream', player: 'Luis Díaz (Colombia)' },
-            { gift: 'Panda', player: 'Raúl Jiménez (México)' },
-            { gift: 'Love Letter', player: 'Luis Romo (México)' },
-            { gift: 'Perfume', player: 'Julián Quiñones (México)' },
-            { gift: 'Corgi', player: 'Maximiliano Araújo (Uruguay)' },
-            { gift: 'Mirror', player: 'Jaminton Campaz (Colombia)' },
-            { gift: 'Crown', player: 'Vinícius Júnior (Brasil)' },
-            { gift: 'Motorcycle', player: 'Matheus Cunha (Brasil)' },
-            { gift: 'Jet', player: 'Kylian Mbappé (Francia)' },
-            { gift: 'Lion', player: 'Erling Haaland (Noruega)' },
-            { gift: 'Meteor', player: 'Harry Kane (Inglaterra)' },
-            { gift: 'Whale', player: 'Kai Havertz (Alemania)' },
-            { gift: 'Trophy', player: 'Cody Gakpo (Países Bajos)' },
-            { gift: 'Castle', player: 'Jude Bellingham (Inglaterra)' },
-            { gift: 'Fire', player: 'Viktor Gyökeres (Suecia)' }
+            { gift: 'Rose', player: 'Matías Galarza' },
+            { gift: 'Doughnut', player: 'Maurício' },
+            { gift: 'TikTok', player: 'Lionel Messi' },
+            { gift: 'Ice Cream', player: 'Luis Díaz' },
+            { gift: 'Panda', player: 'Raúl Jiménez' },
+            { gift: 'Love Letter', player: 'Luis Romo' },
+            { gift: 'Perfume', player: 'Julián Quiñones' },
+            { gift: 'Corgi', player: 'Maximiliano Araújo' },
+            { gift: 'Mirror', player: 'Jaminton Campaz' },
+            { gift: 'Crown', player: 'Vinícius Júnior' },
+            { gift: 'Motorcycle', player: 'Matheus Cunha' },
+            { gift: 'Jet', player: 'Kylian Mbappé' },
+            { gift: 'Lion', player: 'Erling Haaland' },
+            { gift: 'Meteor', player: 'Harry Kane' },
+            { gift: 'Whale', player: 'Kai Havertz' },
+            { gift: 'Trophy', player: 'Cody Gakpo' },
+            { gift: 'Castle', player: 'Jude Bellingham' },
+            { gift: 'Fire', player: 'Viktor Gyökeres' }
         ];
 
         const grid = document.getElementById('grid-botones');
@@ -131,17 +200,15 @@
         });
 
         function enviarSimulacion(regalo) {
-            const userName = inputUser.value.trim() || "Espectador";
             socket.emit('simular-regalo', {
-                usuario: userName,
+                usuario: inputUser.value.trim() || "Espectador",
                 regalo: regalo
             });
         }
 
-        function cambiarNombreAleatorio() {
-            const nombres = ['LuisFer_Py', 'GoleadorFiel', 'AlbirrojaCrack', 'SocioWholesale', 'NandoDev', 'ZlatanFan'];
-            const num = Math.floor(Math.random() * 900) + 100;
-            inputUser.value = nombres[Math.floor(Math.random() * nombres.length)] + num;
+        function cambiarNombre() {
+            const nombres = ['LuisFer_Py', 'GoleadorFiel', 'AlbirrojaCrack', 'SocioWholesale', 'NandoDev'];
+            inputUser.value = nombres[Math.floor(Math.random() * nombres.length)] + (Math.floor(Math.random() * 900) + 100);
         }
     </script>
 </body>

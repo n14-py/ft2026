@@ -7,7 +7,6 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
-// Servir la carpeta public para los HTML y los videos
 app.use(express.static('public'));
 
 // ============================================================================
@@ -34,76 +33,70 @@ const mapaGoles = {
     'Fire': 'viktor_gyokeres.mp4'         
 };
 
-const tiktokUsername = "futbolmundial2026_";
+let tiktokConnection = null;
 
 // ============================================================================
-// 👤 CONEXIÓN A TIKTOK LIVE
-// ============================================================================
-let tiktokConnection = new WebcastPushConnection(tiktokUsername, {
-    processInitialData: false,     
-    enableExtendedGiftInfo: true,  
-    enableWebsocketUpgrade: true,  
-    requestPollingIntervalMs: 2000,
-    // 👇 ESTO ES LO QUE OBLIGARÁ A RENDER A ENTRAR 👇
-    sessionId: "85003d94cb2396d115e5971616273e8f" 
-});
-
-function conectarTikTok() {
-    console.log(`\n⏳ Intentando conectar al Live de @${tiktokUsername}...`);
-    
-    tiktokConnection.connect().then(state => {
-        console.log(`✅ ¡Conectado exitosamente al Live! Room ID: ${state.roomId}`);
-    }).catch(err => {
-        console.error('❌ Error al conectar. (El directo debe estar activo). Reintentando en 10s...');
-        setTimeout(conectarTikTok, 10000);
-    });
-}
-
-// Arrancar la conexión
-conectarTikTok();
-
-// Si se cae el live, intenta reconectar automáticamente
-tiktokConnection.on('disconnected', () => {
-    console.log('⚠️ Conexión interrumpida o Live finalizado. Reconectando...');
-    conectarTikTok();
-});
-
-// Manejo de errores de la librería
-tiktokConnection.on('error', (err) => {
-    console.error('🚨 Error interno de TikTok:', err.message);
-});
-
-// ============================================================================
-// 🎁 ESCUCHADOR DE REGALOS (LIVE REAL)
-// ============================================================================
-tiktokConnection.on('gift', (data) => {
-    // Filtrar combos de regalos para que no se spamee la alerta
-    if (data.giftType === 1 && !data.repeatEnd) return; 
-
-    const nombreRegalo = data.giftName;
-    const archivoVideo = mapaGoles[nombreRegalo];
-
-    console.log(`[LIVE REAL] 🎁 ${data.uniqueId} envió: ${nombreRegalo}`);
-
-    if (archivoVideo) {
-        console.log(`[ALERTA OBS] ⚽ Disparando video: ${archivoVideo}`);
-        io.emit('mostrar-gol', {
-            video: `/videos/${archivoVideo}`,
-            usuario: data.uniqueId,
-            regalo: nombreRegalo,
-            cantidad: data.repeatCount || 1
-        });
-    }
-});
-
-// ============================================================================
-// 🧪 CANAL DE COMUNICACIÓN PARA PRUEBAS (test.html)
+// 🔌 SISTEMA DE COMUNICACIÓN CON EL PANEL DE CONTROL
 // ============================================================================
 io.on('connection', (socket) => {
-    socket.on('simular-regalo', (data) => {
-        console.log(`[MODO PRUEBA] 🧪 Usuario simulado "${data.usuario}" envió: ${data.regalo}`);
-        const archivoVideo = mapaGoles[data.regalo];
+    console.log('🔌 Cliente (Panel/OBS) conectado');
+
+    // 1️⃣ ORDEN DE CONECTAR MANUALMENTE
+    socket.on('iniciar-conexion-tiktok', (username) => {
+        console.log(`\n⏳ Orden manual recibida: Conectando a @${username}...`);
         
+        // Si ya había una conexión previa, la cerramos
+        if (tiktokConnection) {
+            try { tiktokConnection.disconnect(); } catch(e){}
+        }
+
+        // Emitimos estado al panel
+        io.emit('estado-conexion', { status: '⏳ Conectando...', color: '#ffcc00' });
+
+        // Inicializamos la conexión
+        tiktokConnection = new WebcastPushConnection(username, {
+            processInitialData: false,     
+            enableExtendedGiftInfo: true,  
+            enableWebsocketUpgrade: true,  
+            requestPollingIntervalMs: 2000
+        });
+
+        // Intentamos conectar
+        tiktokConnection.connect().then(state => {
+            console.log(`✅ ¡Conectado exitosamente al Live! Room ID: ${state.roomId}`);
+            io.emit('estado-conexion', { status: `✅ Conectado al Live de @${username}`, color: '#00ffcc' });
+        }).catch(err => {
+            console.error('❌ Error al conectar:', err.message || err);
+            io.emit('estado-conexion', { status: '❌ Error: Asegúrate de estar en vivo o revisa el usuario.', color: '#ff4444' });
+        });
+
+        // Eventos de la conexión
+        tiktokConnection.on('disconnected', () => {
+            console.log('⚠️ Live finalizado o desconectado.');
+            io.emit('estado-conexion', { status: '⚠️ Desconectado', color: '#ffaa00' });
+        });
+
+        // 2️⃣ ESCUCHAR REGALOS REALES
+        tiktokConnection.on('gift', (data) => {
+            if (data.giftType === 1 && !data.repeatEnd) return; 
+
+            const nombreRegalo = data.giftName;
+            const archivoVideo = mapaGoles[nombreRegalo];
+
+            if (archivoVideo) {
+                io.emit('mostrar-gol', {
+                    video: `/videos/${archivoVideo}`,
+                    usuario: data.uniqueId,
+                    regalo: nombreRegalo,
+                    cantidad: data.repeatCount || 1
+                });
+            }
+        });
+    });
+
+    // 3️⃣ PRUEBAS LOCALES (Botones del panel)
+    socket.on('simular-regalo', (data) => {
+        const archivoVideo = mapaGoles[data.regalo];
         if (archivoVideo) {
             io.emit('mostrar-gol', {
                 video: `/videos/${archivoVideo}`,
@@ -119,10 +112,6 @@ io.on('connection', (socket) => {
 // 🚀 INICIO DEL SERVIDOR
 // ============================================================================
 const PORT = process.env.PORT || 3000;
-
 server.listen(PORT, () => {
-    console.log('\n=============================================================');
-    console.log(`🚀 SERVIDOR INICIADO CORRECTAMENTE`);
-    console.log(`📡 Escuchando tráfico en el puerto: ${PORT}`);
-    console.log('=============================================================\n');
+    console.log(`🚀 SERVIDOR MANUAL INICIADO EN PUERTO: ${PORT}`);
 });
