@@ -7,15 +7,10 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Servimos la carpeta public donde estará el index.html y los videos
+// Servimos la carpeta pública para el frontend
 app.use(express.static('public'));
 
-// -----------------------------------------------------------------
-// 🗺️ MAPA DE REGALOS A JUGADORES
-// Aquí asocias el nombre del regalo en TikTok con el archivo de video.
-// Nota: Deberás ajustar el lado izquierdo ('Rose', 'GG', etc.) al nombre 
-// exacto del regalo que quieras asociar.
-// -----------------------------------------------------------------
+// Diccionario de tus 18 jugadores (sin el 9 ni el 19)
 const mapaGoles = {
     'Rose': 'matias_galarza.mp4',         // 1. Matías Galarza
     'Doughnut': 'mauricio.mp4',           // 2. Maurício
@@ -37,53 +32,66 @@ const mapaGoles = {
     'Fire': 'viktor_gyokeres.mp4'         // 20. Viktor Gyökeres
 };
 
-// Configura el usuario que hará el directo (sin el @)
+// Configura tu cuenta de TikTok aquí para el Live real
 const tiktokUsername = "futbolmundial2026_"; 
-
 let tiktokConnection = new WebcastPushConnection(tiktokUsername);
 
-// Función para conectar y reconectar en caso de caída
 function conectarTikTok() {
+    if (tiktokUsername === "TU_USUARIO_DE_TIKTOK_AQUI") {
+        console.log("⚠️ Modo de escucha real en espera: Configura tu usuario en 'server.js' cuando vayas a transmitir.");
+        return;
+    }
     tiktokConnection.connect().then(state => {
         console.log(`✅ Conectado al Live de ${state.roomId}`);
     }).catch(err => {
-        console.error('❌ Error al conectar, reintentando en 5s...', err);
+        console.error('❌ Error al conectar a TikTok, reintentando en 5s...', err);
         setTimeout(conectarTikTok, 5000);
     });
 }
 
 conectarTikTok();
 
-// Evento cuando se desconecta
 tiktokConnection.on('disconnected', () => {
-    console.log('⚠️ Desconectado de TikTok. Reconectando...');
+    console.log('⚠️ Conexión con TikTok interrumpida. Reconectando...');
     conectarTikTok();
 });
 
-// Escuchar los regalos
+// Capturar regalos en el Live Real
 tiktokConnection.on('gift', (data) => {
-    // Solo disparamos el evento si el regalo terminó de enviarse (evita spam por combos de 100 rosas seguidas)
-    if (data.giftType === 1 && !data.repeatEnd) {
-        return; // Ignoramos si es un combo y aún no termina
-    }
+    if (data.giftType === 1 && !data.repeatEnd) return; // Evita spam intermedio de combos
 
     const nombreRegalo = data.giftName;
     const archivoVideo = mapaGoles[nombreRegalo];
 
-    console.log(`🎁 Regalo recibido: ${nombreRegalo} de ${data.uniqueId}`);
-
-    // Si el regalo está en nuestro mapa, mandamos la señal al frontend
     if (archivoVideo) {
-        console.log(`⚽ Reproduciendo gol de: ${archivoVideo}`);
-        
         io.emit('mostrar-gol', {
             video: `/videos/${archivoVideo}`,
             usuario: data.uniqueId,
-            cantidad: data.repeatCount // Por si mandan x10 rosas, enviamos el gol 10 veces a la cola
+            regalo: nombreRegalo,
+            cantidad: data.repeatCount || 1
         });
     }
 });
 
+// --- 🧪 CANAL DE COMUNICACIÓN PARA PRUEBAS LOCALES ---
+io.on('connection', (socket) => {
+    socket.on('simular-regalo', (data) => {
+        console.log(`🧪 [TEST] El usuario simulado "${data.usuario}" envió un: ${data.regalo}`);
+        const archivoVideo = mapaGoles[data.regalo];
+        
+        if (archivoVideo) {
+            io.emit('mostrar-gol', {
+                video: `/videos/${archivoVideo}`,
+                usuario: data.usuario,
+                regalo: data.regalo,
+                cantidad: 1
+            });
+        }
+    });
+});
+
 server.listen(3000, () => {
-    console.log('🚀 Servidor corriendo en http://localhost:3000');
+    console.log('🚀 Sistema de Goles iniciado con éxito.');
+    console.log('📺 URL para tu OBS (Fuente de Navegador): http://localhost:3000');
+    console.log('🧪 URL para Probar tus Videos (Panel de Control): http://localhost:3000/test.html');
 });

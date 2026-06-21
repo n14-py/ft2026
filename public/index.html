@@ -2,81 +2,109 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Alerta de Goles</title>
+    <title>Alerta de Goles - OBS Overlay</title>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@700;900&display=swap');
+
         body {
             margin: 0;
             overflow: hidden;
-            background-color: transparent; /* Fundamental para OBS */
+            background-color: transparent; /* Transparente para OBS */
+            font-family: 'Poppins', sans-serif;
         }
-        #video-container {
+        #alerta-container {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
             display: none;
             text-align: center;
+            width: 100%;
+            max-width: 750px;
         }
         video {
             width: 100%;
-            max-width: 800px; /* Ajusta el tamaño según tu stream */
-            border-radius: 15px;
-            box-shadow: 0px 0px 20px rgba(0,0,0,0.5);
+            border-radius: 20px;
+            box-shadow: 0px 10px 30px rgba(0,0,0,0.8);
+            border: 5px solid #ffffff;
+        }
+        #texto-alerta {
+            margin-top: 15px;
+            font-size: 34px;
+            color: #ffffff;
+            text-shadow: 0px 4px 10px rgba(0,0,0,0.9), 0px 0px 20px #00ffcc;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            animation: bounce 1s infinite alternate;
+        }
+        span.highlight {
+            color: #00ffcc;
+            text-shadow: 0px 0px 10px #00ffcc;
+        }
+        @keyframes bounce {
+            from { transform: translateY(0); }
+            to { transform: translateY(-5px); }
         }
     </style>
 </head>
 <body>
 
-    <div id="video-container">
+    <div id="alerta-container">
         <video id="alerta-video" src=""></video>
+        <div id="texto-alerta"></div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
-        const container = document.getElementById('video-container');
+        const container = document.getElementById('alerta-container');
         const videoPlayer = document.getElementById('alerta-video');
+        const textoAlerta = document.getElementById('texto-alerta');
         
-        let colaDeVideos = []; // Aquí se guardan los videos pendientes
-        let reproduciendo = false;
+        let queue = [];
+        let isPlaying = false;
 
-        // Escuchamos el evento desde el backend
         socket.on('mostrar-gol', (data) => {
-            // Si el usuario mandó un combo (ej: x5 rosas), metemos el video 5 veces a la cola
-            const cantidad = data.cantidad || 1;
-            for(let i = 0; i < cantidad; i++) {
-                colaDeVideos.push(data.video);
+            const repetir = data.cantidad || 1;
+            for(let i = 0; i < repetir; i++) {
+                queue.push({
+                    video: data.video,
+                    usuario: data.usuario,
+                    regalo: data.regalo
+                });
             }
-            procesarCola();
+            procesarQueue();
         });
 
-        function procesarCola() {
-            // Si ya hay un video reproduciéndose o la cola está vacía, no hacemos nada
-            if (reproduciendo || colaDeVideos.length === 0) return;
+        function procesarQueue() {
+            if (isPlaying || queue.length === 0) return;
 
-            reproduciendo = true;
+            isPlaying = true;
+            const item = queue.shift();
             
-            // Sacamos el primer video de la cola
-            const videoActual = colaDeVideos.shift();
+            // Asignar los datos en tiempo real
+            textoAlerta.innerHTML = `⚽ ¡<span class="highlight">${item.usuario}</span> envió ${item.regalo}!`;
+            videoPlayer.src = item.video;
             
-            videoPlayer.src = videoActual;
             container.style.display = 'block';
             
-            // Forzamos la reproducción
-            videoPlayer.play().catch(e => console.error("Error al reproducir:", e));
+            videoPlayer.play().catch(err => {
+                console.error("Error al reproducir video, saltando al siguiente...", err);
+                resetAlerta();
+            });
         }
 
-        // Cuando el video termina, verificamos si hay más en la cola
-        videoPlayer.onended = () => {
+        function resetAlerta() {
             container.style.display = 'none';
-            reproduciendo = false;
-            videoPlayer.src = ""; // Limpiamos
+            isPlaying = false;
+            videoPlayer.src = "";
             
-            // Esperamos medio segundo antes de mostrar el siguiente gol para que se vea natural
-            setTimeout(() => {
-                procesarCola();
-            }, 500);
-        };
+            // Pausa de 400ms entre alertas consecutivas para una transición limpia
+            setTimeout(procesarQueue, 400);
+        }
+
+        videoPlayer.onended = resetAlerta;
     </script>
 </body>
 </html>
