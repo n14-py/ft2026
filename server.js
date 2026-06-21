@@ -2,6 +2,10 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 
+// Importación segura y directa
+const tiktokLive = require('tiktok-live-connector');
+const WebcastPushConnection = tiktokLive.WebcastPushConnection || tiktokLive.default?.WebcastPushConnection || tiktokLive;
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
@@ -35,79 +39,57 @@ const mapaGoles = {
 const tiktokUsername = "futbolmundial2026_";
 
 // ============================================================================
-// 🛡️ INICIO ASÍNCRONO DE TIKTOK (LA BALA DE PLATA CONTRA ERRORES EN RENDER)
+// 👤 CONEXIÓN A TIKTOK
 // ============================================================================
-async function arrancarTikTok() {
-    let WebcastPushConnection;
+let tiktokConnection = new WebcastPushConnection(tiktokUsername, {
+    processInitialData: false,     
+    enableExtendedGiftInfo: true,  
+    enableWebsocketUpgrade: true,  
+    requestPollingIntervalMs: 2000 
+});
 
-    try {
-        // La importación dinámica "await import()" soluciona los problemas de "is not a constructor"
-        const tiktokLive = await import('tiktok-live-connector');
-        
-        // Extraemos la clase sin importar cómo la empaquetó Render
-        WebcastPushConnection = tiktokLive.WebcastPushConnection || 
-                                (tiktokLive.default && tiktokLive.default.WebcastPushConnection) || 
-                                tiktokLive.default;
-
-        if (typeof WebcastPushConnection !== 'function') {
-            throw new Error("La importación dinámica no devolvió una función.");
-        }
-    } catch (error) {
-        console.warn("⚠️ Falló la importación principal, usando método de respaldo...");
-        WebcastPushConnection = require('tiktok-live-connector');
-    }
-
-    // Inicializamos la conexión
-    let tiktokConnection = new WebcastPushConnection(tiktokUsername, {
-        processInitialData: false,     
-        enableExtendedGiftInfo: true,  
-        enableWebsocketUpgrade: true,  
-        requestPollingIntervalMs: 2000 
-    });
-
-    function conectar() {
-        console.log(`\n⏳ Intentando conectar al Live de @${tiktokUsername}...`);
-        tiktokConnection.connect().then(state => {
-            console.log(`✅ ¡Conectado exitosamente al Live! Room ID: ${state.roomId}`);
-        }).catch(err => {
-            console.error('❌ Error al conectar. (El directo debe estar activo). Reintentando en 10s...');
-            setTimeout(conectar, 10000);
-        });
-    }
-
-    conectar();
-
-    tiktokConnection.on('disconnected', () => {
-        console.log('⚠️ Conexión interrumpida o Live finalizado. Reconectando...');
-        conectar();
-    });
-
-    // 🎁 ESCUCHADOR DE REGALOS
-    tiktokConnection.on('gift', (data) => {
-        if (data.giftType === 1 && !data.repeatEnd) return; 
-
-        const nombreRegalo = data.giftName;
-        const archivoVideo = mapaGoles[nombreRegalo];
-
-        console.log(`[LIVE REAL] 🎁 ${data.uniqueId} envió: ${nombreRegalo}`);
-
-        if (archivoVideo) {
-            console.log(`[ALERTA OBS] ⚽ Disparando video: ${archivoVideo}`);
-            io.emit('mostrar-gol', {
-                video: `/videos/${archivoVideo}`,
-                usuario: data.uniqueId,
-                regalo: nombreRegalo,
-                cantidad: data.repeatCount || 1
-            });
-        }
+function conectarTikTok() {
+    console.log(`\n⏳ Intentando conectar al Live de @${tiktokUsername}...`);
+    
+    tiktokConnection.connect().then(state => {
+        console.log(`✅ ¡Conectado exitosamente al Live! Room ID: ${state.roomId}`);
+    }).catch(err => {
+        console.error('❌ Error al conectar (Asegúrate de estar en vivo). Reintentando en 10s...');
+        setTimeout(conectarTikTok, 10000);
     });
 }
 
-// Ejecutamos la función blindada
-arrancarTikTok();
+conectarTikTok();
+
+tiktokConnection.on('disconnected', () => {
+    console.log('⚠️ Conexión interrumpida o Live finalizado. Reconectando...');
+    conectarTikTok();
+});
 
 // ============================================================================
-// 🧪 CANAL DE COMUNICACIÓN PARA PRUEBAS (test.html)
+// 🎁 ESCUCHADOR DE REGALOS
+// ============================================================================
+tiktokConnection.on('gift', (data) => {
+    if (data.giftType === 1 && !data.repeatEnd) return; 
+
+    const nombreRegalo = data.giftName;
+    const archivoVideo = mapaGoles[nombreRegalo];
+
+    console.log(`[LIVE REAL] 🎁 ${data.uniqueId} envió: ${nombreRegalo}`);
+
+    if (archivoVideo) {
+        console.log(`[ALERTA OBS] ⚽ Disparando video: ${archivoVideo}`);
+        io.emit('mostrar-gol', {
+            video: `/videos/${archivoVideo}`,
+            usuario: data.uniqueId,
+            regalo: nombreRegalo,
+            cantidad: data.repeatCount || 1
+        });
+    }
+});
+
+// ============================================================================
+// 🧪 CANAL DE PRUEBAS LOCALES (test.html)
 // ============================================================================
 io.on('connection', (socket) => {
     socket.on('simular-regalo', (data) => {
@@ -126,9 +108,10 @@ io.on('connection', (socket) => {
 });
 
 // ============================================================================
-// 🚀 ARRANQUE DEL SERVIDOR
+// 🚀 INICIO DEL SERVIDOR
 // ============================================================================
 const PORT = process.env.PORT || 3000;
+
 server.listen(PORT, () => {
     console.log('\n=============================================================');
     console.log(`🚀 SERVIDOR INICIADO CORRECTAMENTE`);
