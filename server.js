@@ -4,19 +4,28 @@ const { Server } = require('socket.io');
 const tiktokLive = require('tiktok-live-connector');
 
 // ============================================================================
-// 🛡️ EXTRACCIÓN A PRUEBA DE BALAS PARA RENDER Y NODE 24+
-// Esto soluciona el TypeError: WebcastPushConnection is not a constructor
+// 🛡️ EXTRACCIÓN DEFINITIVA PARA RENDER Y NODE 24+
+// Esto busca la clase en toda la librería sin importar cómo Render la empaquete
 // ============================================================================
 let WebcastPushConnection;
-if (typeof tiktokLive.WebcastPushConnection === 'function') {
+
+if (tiktokLive && typeof tiktokLive.WebcastPushConnection === 'function') {
     WebcastPushConnection = tiktokLive.WebcastPushConnection;
-} else if (tiktokLive.default && typeof tiktokLive.default.WebcastPushConnection === 'function') {
+} else if (tiktokLive && tiktokLive.default && typeof tiktokLive.default.WebcastPushConnection === 'function') {
     WebcastPushConnection = tiktokLive.default.WebcastPushConnection;
-} else if (typeof tiktokLive === 'function') {
-    WebcastPushConnection = tiktokLive;
 } else {
-    console.error("🛑 Error crítico: No se encontró la clase de conexión en tiktok-live-connector.");
-    console.error("Estructura recibida:", tiktokLive);
+    // Búsqueda profunda de la clase
+    for (const key in tiktokLive) {
+        if (key === 'WebcastPushConnection' || (typeof tiktokLive[key] === 'function' && tiktokLive[key].name === 'WebcastPushConnection')) {
+            WebcastPushConnection = tiktokLive[key];
+            break;
+        }
+    }
+}
+
+if (!WebcastPushConnection) {
+    console.error("🛑 Error Crítico: Imposible encontrar WebcastPushConnection.");
+    console.error("Revisa si la versión de tiktok-live-connector es compatible.");
     process.exit(1); // Detiene el servidor si la librería falla al cargar
 }
 
@@ -161,7 +170,5 @@ server.listen(PORT, () => {
     console.log('\n=============================================================');
     console.log(`🚀 SUPER SERVIDOR DE GOLES INICIADO CORRECTAMENTE`);
     console.log(`📡 Escuchando tráfico en el puerto: ${PORT}`);
-    console.log(`📺 URL para añadir a OBS: TU_URL_DE_RENDER_AQUI`);
-    console.log(`🧪 Panel de control (Pruebas): TU_URL_DE_RENDER_AQUI/test.html`);
     console.log('=============================================================\n');
 });
